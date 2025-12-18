@@ -8,3 +8,4 @@ router.get('/dashboard', requireAuth, dashboardController.getDashboard);
 
 module.exports = router;
 
+

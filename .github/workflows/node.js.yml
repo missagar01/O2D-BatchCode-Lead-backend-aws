@@ -1,4 +1,4 @@
-name: Deploy Backend to EC2 (PM2)
+name: Deploy to EC2 (PM2)
 
 on:
   push:
@@ -9,7 +9,7 @@ jobs:
     runs-on: self-hosted
 
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Setup Node
@@ -17,17 +17,17 @@ jobs:
         with:
           node-version: 20
 
-      - name: Install dependencies (CI)
-        run: npm ci
+      # If you DON'T have package-lock.json, use npm install
+      - name: Install dependencies
+        run: npm install
 
       - name: Build (if present)
         run: npm run build --if-present
 
-      # ---- DEPLOY TO SERVER PATH ----
-      - name: Deploy to /var/www/o2d-backend (keep .env)
+      - name: Deploy to /var/www/o2d-backend (do NOT touch .env)
         run: |
           sudo mkdir -p /var/www/o2d-backend
-          sudo chown -R $USER:$USER /var/www/o2d-backend
+          sudo chown -R ubuntu:ubuntu /var/www/o2d-backend
 
           rsync -av --delete \
             --exclude ".git/" \
@@ -36,13 +36,12 @@ jobs:
             --exclude ".env.*" \
             ./ /var/www/o2d-backend/
 
-      - name: Install production dependencies on server
+      - name: Install production deps on server
         working-directory: /var/www/o2d-backend
-        run: npm ci --omit=dev
+        run: npm install --omit=dev
 
-      # ---- PM2 RESTART ----
       - name: Restart PM2
         working-directory: /var/www/o2d-backend
         run: |
-          pm2 describe o2d-backend >/dev/null 2>&1 && pm2 restart o2d-backend || pm2 start server.js --name o2d-backend
+          pm2 describe o2d-backend >/dev/null 2>&1 && pm2 restart o2d-backend || pm2 start server.cjs --name o2d-backend
           pm2 save

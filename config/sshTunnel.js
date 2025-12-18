@@ -1,6 +1,8 @@
 const { Client } = require('ssh2');
 const net = require('net');
 const dotenv = require('dotenv');
+const fs = require('fs');
+const path = require('path');
 
 // Load environment variables first
 dotenv.config();
@@ -122,20 +124,60 @@ function createTunnelServer(serviceName, localPort, remoteHost, remotePort) {
   });
 }
 
+function getSSHPrivateKey() {
+  // Try SSH_PRIVATE_KEY (direct key content)
+  if (process.env.SSH_PRIVATE_KEY) {
+    return process.env.SSH_PRIVATE_KEY;
+  }
+  
+  // Try SSH_KEY_PATH (path to key file)
+  if (process.env.SSH_KEY_PATH) {
+    const keyPath = path.resolve(process.env.SSH_KEY_PATH);
+    if (fs.existsSync(keyPath)) {
+      try {
+        return fs.readFileSync(keyPath, 'utf8');
+      } catch (err) {
+        console.error('❌ Error reading SSH key file:', err.message);
+        return null;
+      }
+    } else {
+      console.error(`❌ SSH key file not found: ${keyPath}`);
+      return null;
+    }
+  }
+  
+  // Try default key path ~/.ssh/o2d_tunnel_key
+  const defaultKeyPath = path.join(process.env.HOME || process.env.USERPROFILE || '', '.ssh', 'o2d_tunnel_key');
+  if (fs.existsSync(defaultKeyPath)) {
+    try {
+      return fs.readFileSync(defaultKeyPath, 'utf8');
+    } catch (err) {
+      console.error('❌ Error reading default SSH key file:', err.message);
+      return null;
+    }
+  }
+  
+  return null;
+}
+
 async function establishTunnels() {
   return new Promise((resolve, reject) => {
     const SSH_HOST = process.env.SSH_HOST;
     const SSH_PORT = parseInt(process.env.SSH_PORT || '22', 10);
     const SSH_USER = process.env.SSH_USER;
     const SSH_PASSWORD = process.env.SSH_PASSWORD;
+    const SSH_PRIVATE_KEY = getSSHPrivateKey();
 
     console.log("🔐 Creating SSH tunnel to", SSH_HOST);
     console.log("🔐 SSH User:", SSH_USER ? '***' : 'NOT SET');
     console.log("🔐 SSH Port:", SSH_PORT);
+    console.log("🔐 Auth Method:", SSH_PRIVATE_KEY ? 'SSH Key' : (SSH_PASSWORD ? 'Password' : 'NOT SET'));
 
     if (!SSH_HOST) return reject(new Error('SSH_HOST environment variable is required'));
     if (!SSH_USER) return reject(new Error('SSH_USER environment variable is required'));
-    if (!SSH_PASSWORD) return reject(new Error('SSH_PASSWORD environment variable is required'));
+    if (!SSH_PRIVATE_KEY && !SSH_PASSWORD) {
+      return reject(new Error('Either SSH_PRIVATE_KEY, SSH_KEY_PATH, or SSH_PASSWORD environment variable is required'));
+    }
 
     cleanupTunnelServers();
     cleanupClient();
@@ -202,8 +244,6 @@ async function establishTunnels() {
       host: SSH_HOST,
       port: SSH_PORT,
       username: SSH_USER,
-      password: SSH_PASSWORD,
-      tryKeyboard: true,
       readyTimeout: 30000,
       keepaliveInterval: 10000,
       keepaliveCountMax: 5,
@@ -216,6 +256,16 @@ async function establishTunnels() {
         ],
       },
     };
+
+    // Add authentication method (prefer SSH key over password)
+    if (SSH_PRIVATE_KEY) {
+      sshConfig.privateKey = SSH_PRIVATE_KEY;
+      console.log('🔑 Using SSH key authentication');
+    } else if (SSH_PASSWORD) {
+      sshConfig.password = SSH_PASSWORD;
+      sshConfig.tryKeyboard = true;
+      console.log('🔑 Using password authentication');
+    }
 
     console.log(`🔐 Connecting to SSH with user: ${SSH_USER}`);
     sshClient.connect(sshConfig);
