@@ -2,46 +2,33 @@ name: Deploy to EC2 (PM2)
 
 on:
   push:
-    branches: ["master"]
+    branches:
+      - master
 
 jobs:
   deploy:
     runs-on: self-hosted
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Node
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: "20"
 
-      # If you DON'T have package-lock.json, use npm install
       - name: Install dependencies
-        run: npm install
+        run: npm ci || npm install
 
       - name: Build (if present)
         run: npm run build --if-present
 
-      - name: Deploy to /var/www/o2d-backend (do NOT touch .env)
+      - name: Restart PM2 (run from current repo)
         run: |
-          sudo mkdir -p /var/www/o2d-backend
-          sudo chown -R ubuntu:ubuntu /var/www/o2d-backend
-
-          rsync -av --delete \
-            --exclude ".git/" \
-            --exclude "node_modules/" \
-            --exclude ".env" \
-            --exclude ".env.*" \
-            ./ /var/www/o2d-backend/
-
-      - name: Install production deps on server
-        working-directory: /var/www/o2d-backend
-        run: npm install --omit=dev
-
-      - name: Restart PM2
-        working-directory: /var/www/o2d-backend
-        run: |
-          pm2 describe o2d-backend >/dev/null 2>&1 && pm2 restart o2d-backend || pm2 start server.cjs --name o2d-backend
+          if pm2 describe o2d-backend > /dev/null 2>&1; then
+            pm2 restart o2d-backend --update-env
+          else
+            pm2 start server.cjs --name o2d-backend
+          fi
           pm2 save
