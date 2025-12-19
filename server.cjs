@@ -78,8 +78,17 @@ const server = app.listen(port, async () => {
         }
         
         // Then initialize all database connections
-        // Initialize Oracle first, then PostgreSQL connections
-        await initPool();
+        // Initialize Oracle first (make it optional - don't fail server startup)
+        console.log("📡 Initializing Oracle database connection...");
+        try {
+          await initPool();
+          console.log("✅ Oracle database connection established");
+        } catch (oracleErr) {
+          console.error("❌ Oracle connection failed, continuing without it:", oracleErr.message);
+          console.error("⚠️ O2D module endpoints will not work without Oracle connection");
+          console.error("⚠️ Check your .env file - ensure ORACLE_USER, ORACLE_PASSWORD, and ORACLE_CONNECTION_STRING are set correctly");
+          // Don't exit - let the server start, Oracle will fail gracefully when routes are accessed
+        }
         
         // Additional delay to ensure tunnel is fully ready for PostgreSQL connections
         await new Promise(resolve => setTimeout(resolve, 3004)); // Increased wait time

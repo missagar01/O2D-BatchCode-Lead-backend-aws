@@ -102,6 +102,10 @@ async function getDashboardData({
   let connection;
   try {
     connection = await getConnection();
+    if (!connection) {
+      throw new Error("Failed to establish Oracle database connection");
+    }
+    
     const result = await connection.execute(BASE_DASHBOARD_QUERY, binds, {
       outFormat: oracledb.OUT_FORMAT_OBJECT,
     });
@@ -173,8 +177,18 @@ async function getDashboardData({
         state: p_state,
       },
     };
+  } catch (error) {
+    console.error("❌ Error in getDashboardData:", error.message);
+    // Re-throw with more context
+    throw new Error(`Dashboard data fetch failed: ${error.message}`);
   } finally {
-    if (connection) await connection.close();
+    if (connection) {
+      try {
+        await connection.close();
+      } catch (closeError) {
+        console.error("⚠️ Error closing Oracle connection:", closeError.message);
+      }
+    }
   }
 }
 

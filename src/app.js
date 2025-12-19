@@ -30,7 +30,7 @@ const corsOptions = corsOrigins.includes("*")
       allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
       exposedHeaders: ['Content-Range', 'X-Content-Range'],
       preflightContinue: false,
-      optionsSuccessStatus: 204
+      optionsSuccessStatus: 200 // Some browsers expect 200 for OPTIONS
     }
   : { 
       origin: function (origin, callback) {
@@ -43,7 +43,7 @@ const corsOptions = corsOrigins.includes("*")
           callback(null, true);
         } else {
           console.warn(`CORS: Origin ${origin} not allowed. Allowed origins: ${corsOrigins.join(', ')}`);
-          callback(new Error('Not allowed by CORS'));
+          callback(null, false); // Return false instead of error to allow CORS middleware to handle it
         }
       },
       credentials: true,
@@ -51,7 +51,7 @@ const corsOptions = corsOrigins.includes("*")
       allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
       exposedHeaders: ['Content-Range', 'X-Content-Range'],
       preflightContinue: false,
-      optionsSuccessStatus: 204
+      optionsSuccessStatus: 200 // Some browsers expect 200 for OPTIONS
     };
 
 const apiRouter = express.Router();
@@ -76,6 +76,29 @@ app.use(compression());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Middleware to ensure CORS headers are set on all responses
+app.use((req, res, next) => {
+  // Store original json method
+  const originalJson = res.json.bind(res);
+  
+  // Override json to ensure CORS headers are set
+  res.json = function(data) {
+    const origin = req.headers.origin;
+    if (origin) {
+      const isAllowed = corsOrigins.includes("*") || corsOrigins.includes(origin);
+      if (isAllowed && !res.getHeader('Access-Control-Allow-Origin')) {
+        res.setHeader('Access-Control-Allow-Origin', origin);
+        res.setHeader('Access-Control-Allow-Credentials', 'true');
+      }
+    } else if (corsOrigins.includes("*") && !res.getHeader('Access-Control-Allow-Origin')) {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+    }
+    return originalJson(data);
+  };
+  
+  next();
+});
+
 app.use("/api", apiRouter);
 
 // Root routes (non-/api routes)
@@ -85,8 +108,47 @@ app.get("/health", (req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
+// 404 handler
 app.use((req, res) => {
   res.status(404).json({ success: false, message: "Route not found" });
+});
+
+// Global error handler - MUST be last middleware
+// This ensures CORS headers are always sent, even on errors
+app.use((err, req, res, next) => {
+  // Log the error
+  console.error('❌ Error:', err.message);
+  if (err.stack) {
+    console.error('Stack:', err.stack);
+  }
+  
+  // Ensure CORS headers are ALWAYS set, even on errors
+  const origin = req.headers.origin;
+  if (origin) {
+    const isAllowed = corsOrigins.includes("*") || corsOrigins.includes(origin);
+    if (isAllowed) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept');
+    }
+  } else if (corsOrigins.includes("*")) {
+    // If allowing all origins and no origin header, set wildcard
+    res.setHeader('Access-Control-Allow-Origin', '*');
+  }
+  
+  // Don't send response if headers already sent
+  if (res.headersSent) {
+    return next(err);
+  }
+  
+  // Send error response
+  const statusCode = err.statusCode || err.status || 500;
+  res.status(statusCode).json({
+    success: false,
+    message: err.message || 'Internal server error',
+    error: process.env.NODE_ENV === 'development' ? err.stack : undefined
+  });
 });
 
 module.exports = app;

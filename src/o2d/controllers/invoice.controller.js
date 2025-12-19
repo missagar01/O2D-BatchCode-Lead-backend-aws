@@ -2,6 +2,7 @@ const {
   getPendingInvoiceData,
   getInvoiceHistoryData,
 } = require("../services/invoice.service.js");
+const { sendJsonResponse } = require("../utils/responseHelper.js");
 
 // 🟢 Fetch Pending Invoice Data
 async function fetchPendingInvoiceData(req, res) {
@@ -13,13 +14,14 @@ async function fetchPendingInvoiceData(req, res) {
     const search = req.query.search || '';
 
     const result = await getPendingInvoiceData(offset, limit, customer, search);
-    res.status(200).json({ 
+    return sendJsonResponse(req, res, 200, { 
       success: true, 
       data: result.data,
       totalCount: result.totalCount
     });
   } catch (error) {
-    res.status(500).json({
+    console.error("❌ Error in fetchPendingInvoiceData:", error.message);
+    return sendJsonResponse(req, res, 500, {
       success: false,
       message: "Failed to fetch pending invoice data",
       error: error.message,
@@ -36,13 +38,14 @@ async function fetchInvoiceHistoryData(req, res) {
     const search = req.query.search || '';
 
     const result = await getInvoiceHistoryData(offset, limit, customer, search);
-    res.status(200).json({ 
+    return sendJsonResponse(req, res, 200, { 
       success: true, 
       data: result.data,
       totalCount: result.totalCount
     });
   } catch (error) {
-    res.status(500).json({
+    console.error("❌ Error in fetchInvoiceHistoryData:", error.message);
+    return sendJsonResponse(req, res, 500, {
       success: false,
       message: "Failed to fetch invoice history data",
       error: error.message,
