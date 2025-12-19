@@ -14,42 +14,44 @@ const corsOrigins = corsOriginsEnv
   ? corsOriginsEnv.split(",").map((origin) => origin.trim()).filter(Boolean)
   : ["*"];
 
-// Default CORS origins for development and production
-const defaultOrigins = [
-  "http://localhost:5173",
-  "http://localhost:3000",
-  "http://localhost:5174",
-  "https://o2d-batch-lead.sagartmt.com"
-];
+// Log CORS configuration on startup
+console.log('🔒 CORS Configuration:', {
+  enabled: true,
+  allowedOrigins: corsOrigins.includes("*") ? "ALL (*)" : corsOrigins,
+  credentials: true
+});
 
+// CORS configuration - simplified and explicit
 const corsOptions = corsOrigins.includes("*")
   ? { 
-      origin: function (origin, callback) {
-        // Allow requests with no origin (like mobile apps or curl requests)
-        if (!origin) return callback(null, true);
-        // Allow all origins if CORS_ORIGINS is "*"
-        callback(null, true);
-      },
+      origin: true, // Allow all origins
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-      allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
-      exposedHeaders: ['Content-Range', 'X-Content-Range']
+      allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
+      exposedHeaders: ['Content-Range', 'X-Content-Range'],
+      preflightContinue: false,
+      optionsSuccessStatus: 204
     }
   : { 
       origin: function (origin, callback) {
-        // Allow requests with no origin
-        if (!origin) return callback(null, true);
+        // Allow requests with no origin (like mobile apps, Postman, curl)
+        if (!origin) {
+          return callback(null, true);
+        }
         // Check if origin is in allowed list
         if (corsOrigins.includes(origin)) {
           callback(null, true);
         } else {
+          console.warn(`CORS: Origin ${origin} not allowed. Allowed origins: ${corsOrigins.join(', ')}`);
           callback(new Error('Not allowed by CORS'));
         }
       },
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-      allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
-      exposedHeaders: ['Content-Range', 'X-Content-Range']
+      allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
+      exposedHeaders: ['Content-Range', 'X-Content-Range'],
+      preflightContinue: false,
+      optionsSuccessStatus: 204
     };
 
 const apiRouter = express.Router();
@@ -60,15 +62,19 @@ apiRouter.use("/auth", sharedAuthRoutes);
 
 const app = express();
 app.set("trust proxy", 1);
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+
+// CORS must be applied FIRST, before any other middleware
 app.use(cors(corsOptions));
-// Configure helmet to work with CORS
+
+// Configure helmet to work with CORS (must come after CORS)
 app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" },
   crossOriginEmbedderPolicy: false
 }));
+
 app.use(compression());
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 app.use("/api", apiRouter);
 

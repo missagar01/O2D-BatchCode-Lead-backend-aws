@@ -61,10 +61,26 @@ CORS_ORIGINS=https://o2d-batch-lead.sagartmt.com
    pm2 restart o2d-backend
    ```
 
-7. **Check the logs to verify:**
+7. **Check the logs to verify CORS is configured:**
    ```bash
-   pm2 logs o2d-backend --lines 20
+   pm2 logs o2d-backend --lines 30
    ```
+   
+   You should see a line like:
+   ```
+   🔒 CORS Configuration: { enabled: true, allowedOrigins: 'ALL (*)' }
+   ```
+
+8. **Test the preflight request:**
+   ```bash
+   curl -X OPTIONS https://o2d-batch-lead.sagartmt.com/api/auth/login \
+     -H "Origin: http://localhost:5173" \
+     -H "Access-Control-Request-Method: POST" \
+     -H "Access-Control-Request-Headers: Content-Type" \
+     -v
+   ```
+   
+   You should see `Access-Control-Allow-Origin` in the response headers.
 
 ## What Was Fixed
 
