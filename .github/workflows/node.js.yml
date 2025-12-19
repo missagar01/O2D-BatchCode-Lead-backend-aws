@@ -1,17 +1,18 @@
-name: Node.js CI (Self Hosted)
+name: Deploy to EC2 (PM2)
 
 on:
   push:
     branches: ["master"]
   workflow_dispatch:
 
-jobs:
-  build:
-    runs-on: [self-hosted, Linux, X64]
+concurrency:
+  group: deploy-o2d-backend
+  cancel-in-progress: true
 
-    defaults:
-      run:
-        working-directory: backend
+jobs:
+  deploy:
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 45
 
     steps:
       - name: Checkout repository
@@ -20,20 +21,19 @@ jobs:
       - name: Setup Node.js 20
         uses: actions/setup-node@v4
         with:
-          node-version: 20
-
-      - name: Debug workspace
-        run: |
-          echo "GITHUB_WORKSPACE=$GITHUB_WORKSPACE"
-          pwd
-          ls -la
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: package-lock.json
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --no-audit --no-fund
 
-      - name: Start or Restart Backend (PM2)
+      - name: Start/Restart Backend (PM2)
         run: |
           pm2 describe o2d-backend >/dev/null 2>&1 \
             && pm2 restart o2d-backend --update-env \
-            || pm2 start npm --name "o2d-backend" -- start
+            || pm2 start server.cjs --name o2d-backend --cwd "$(pwd)"
           pm2 save
+
+      - name: Health check logs (last 40 lines)
+        run: pm2 logs o2d-backend --lines 40 --nostream
