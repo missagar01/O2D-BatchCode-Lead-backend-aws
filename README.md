@@ -387,7 +387,7 @@ Each module's middleware validates tokens from the shared login endpoint.
 
 4. **Health Check**:
    ```bash
-   curl http://localhost:3006/health
+   curl http://localhost:3004/health
    ```
 
 ---
