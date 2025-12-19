@@ -8,14 +8,24 @@ function pickFirstExisting(dirs) {
 
 function initOracleClient() {
   try {
-    // If ORACLE_CLIENT is set in .env, use it first
-    const envDir = process.env.ORACLE_CLIENT;
+    // If ORACLE_CLIENT or ORACLE_CLIENT_LIB_DIR is set in .env, use it first
+    // ORACLE_CLIENT_LIB_DIR is an alias for compatibility
+    const envDir = process.env.ORACLE_CLIENT || process.env.ORACLE_CLIENT_LIB_DIR;
 
-    // Common locations
+    // Common locations (check multiple versions)
     const linuxDirs = [
+      "/opt/oracle/instantclient_21_13",  // Oracle 21c
+      "/opt/oracle/instantclient_21_12",
+      "/opt/oracle/instantclient_21_11",
+      "/opt/oracle/instantclient_19_21",  // Oracle 19c
+      "/opt/oracle/instantclient_19_20",
+      "/opt/oracle/instantclient_19_19",
+      "/opt/oracle/instantclient_18_5",   // Oracle 18c
+      "/opt/oracle/instantclient_12_2",   // Oracle 12c (supports 11g)
       "/opt/oracle/instantclient",
       "/opt/oracle/instantclient_23_9",
       "/opt/oracle/instantclient_23_8",
+      "/usr/lib/oracle/instantclient",
       "/usr/lib/oracle",
     ];
 
@@ -36,7 +46,13 @@ function initOracleClient() {
     // If no client folder found -> thin mode (works only with node-oracledb thin features)
     if (!libDir) {
       console.log("⚠️ Instant Client not found, staying in Thin mode.");
+      console.log("⚠️ WARNING: Thin mode may not support older Oracle versions (11g and below)");
+      console.log("⚠️ If you get NJS-138 errors, you need to install Oracle Instant Client for Thick mode");
       console.log("🧩 Node-oracledb:", oracledb.versionString);
+      console.log("💡 To install Oracle Instant Client:");
+      console.log("   1. Download from: https://www.oracle.com/database/technologies/instant-client/linux-x86-64-downloads.html");
+      console.log("   2. Extract to /opt/oracle/instantclient_21_13 (or similar)");
+      console.log("   3. Set ORACLE_CLIENT=/opt/oracle/instantclient_21_13 in .env");
       return;
     }
 

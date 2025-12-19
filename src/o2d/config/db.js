@@ -93,8 +93,26 @@ async function initPool() {
       }
     }
 
-    // Initialize Oracle client
-    initOracleClient();
+    // Initialize Oracle client (must be done before creating pool)
+    // This will use Thick mode if Instant Client is found, Thin mode otherwise
+    try {
+      initOracleClient();
+      
+      // Check if we're in Thin mode and warn about potential issues
+      if (oracledb.thin) {
+        console.warn("⚠️ WARNING: Running in Thin mode. Oracle 11g and older may not be supported.");
+        console.warn("⚠️ If you get NJS-138 errors, install Oracle Instant Client and set ORACLE_CLIENT in .env");
+        console.warn("⚠️ Thin mode only supports Oracle 12.1.0.2 and later");
+        console.warn("⚠️ Your Oracle database appears to be 11g (ora11g) which requires Thick mode");
+      } else {
+        console.log("✅ Running in Thick mode (Oracle Instant Client detected)");
+        console.log("✅ Thick mode supports all Oracle versions including 11g");
+      }
+    } catch (clientErr) {
+      console.error("❌ Failed to initialize Oracle Client:", clientErr.message);
+      // Continue anyway - might work in Thin mode for newer Oracle versions
+      console.warn("⚠️ Continuing in Thin mode - may fail for older Oracle versions");
+    }
 
     console.log("📡 Creating Oracle connection pool...");
 
@@ -129,13 +147,32 @@ async function initPool() {
       connectString: dbConfig.connectString
     });
 
-    pool = await oracledb.createPool(dbConfig);
-    console.log("✅ Oracle connection pool started");
+    try {
+      pool = await oracledb.createPool(dbConfig);
+      console.log("✅ Oracle connection pool started");
 
-    // Test connection with retry logic
-    console.log("🧪 Testing database connection...");
-    await testConnectionWithRetry();
-    console.log("✅ Database connection test successful");
+      // Test connection with retry logic
+      console.log("🧪 Testing database connection...");
+      await testConnectionWithRetry();
+      console.log("✅ Database connection test successful");
+    } catch (poolErr) {
+      // Check for NJS-138 error (unsupported Oracle version in Thin mode)
+      if (poolErr.code === 'NJS-138' || poolErr.message.includes('NJS-138')) {
+        console.error("❌ NJS-138 Error: Your Oracle database version is not supported in Thin mode");
+        console.error("❌ This error occurs when connecting to Oracle 11g or older using Thin mode");
+        console.error("");
+        console.error("💡 SOLUTION: Install Oracle Instant Client for Thick mode");
+        console.error("   1. Download Oracle Instant Client from:");
+        console.error("      https://www.oracle.com/database/technologies/instant-client/linux-x86-64-downloads.html");
+        console.error("   2. Extract to /opt/oracle/instantclient_21_13 (or similar)");
+        console.error("   3. Add to .env: ORACLE_CLIENT=/opt/oracle/instantclient_21_13");
+        console.error("   4. Restart PM2: pm2 restart o2d-lead-batch --update-env");
+        console.error("");
+        console.error("📖 See backend/ORACLE_INSTANT_CLIENT_INSTALL.md for detailed instructions");
+        throw new Error("Oracle 11g requires Thick mode. Please install Oracle Instant Client. See ORACLE_INSTANT_CLIENT_INSTALL.md");
+      }
+      throw poolErr; // Re-throw other errors
+    }
     
     poolInitializing = false;
   } catch (err) {
@@ -202,6 +239,46 @@ async function getConnection() {
     // If pool doesn't exist, try to initialize it
     if (!pool) {
       if (poolInitError) {
+        // Check if it's an NJS-138 error and provide detailed instructions
+        const errorMsg = poolInitError.message || '';
+        const errorCode = poolInitError.code || '';
+        
+        if (errorCode === 'NJS-138' || errorMsg.includes('NJS-138') || errorMsg.includes('not supported by node-oracledb in Thin mode')) {
+          console.error("");
+          console.error("❌ =========================================");
+          console.error("❌ NJS-138 ERROR: Oracle Version Not Supported");
+          console.error("❌ =========================================");
+          console.error("");
+          console.error("Your Oracle database (11g/ora11g) requires Thick mode.");
+          console.error("Thin mode only supports Oracle 12.1.0.2 and later.");
+          console.error("");
+          console.error("💡 SOLUTION: Install Oracle Instant Client");
+          console.error("");
+          console.error("Quick Install Steps:");
+          console.error("  1. Download Oracle Instant Client Basic + SDK:");
+          console.error("     https://www.oracle.com/database/technologies/instant-client/linux-x86-64-downloads.html");
+          console.error("");
+          console.error("  2. Upload to AWS server and extract:");
+          console.error("     sudo mkdir -p /opt/oracle");
+          console.error("     cd /opt/oracle");
+          console.error("     sudo unzip instantclient-basic-linux.x64-*.zip");
+          console.error("     sudo unzip instantclient-sdk-linux.x64-*.zip");
+          console.error("");
+          console.error("  3. Set up library path (replace 21_13 with your version):");
+          console.error("     echo '/opt/oracle/instantclient_21_13' | sudo tee /etc/ld.so.conf.d/oracle-instantclient.conf");
+          console.error("     sudo ldconfig");
+          console.error("");
+          console.error("  4. Add to .env file:");
+          console.error("     ORACLE_CLIENT=/opt/oracle/instantclient_21_13");
+          console.error("");
+          console.error("  5. Restart PM2:");
+          console.error("     pm2 restart o2d-lead-batch --update-env");
+          console.error("");
+          console.error("📖 See backend/ORACLE_INSTANT_CLIENT_INSTALL.md for detailed instructions");
+          console.error("");
+          throw new Error("NJS-138: Oracle 11g requires Thick mode. Install Oracle Instant Client. See ORACLE_INSTANT_CLIENT_INSTALL.md");
+        }
+        
         // If we already tried and failed, throw the cached error
         throw new Error(`Oracle connection pool failed to initialize: ${poolInitError.message}. Please check your ORACLE_CONNECTION_STRING and ensure Oracle is accessible.`);
       }
@@ -211,6 +288,26 @@ async function getConnection() {
         await initPool();
       } catch (initError) {
         poolInitError = initError;
+        
+        // Check if it's an NJS-138 error
+        const errorMsg = initError.message || '';
+        const errorCode = initError.code || '';
+        
+        if (errorCode === 'NJS-138' || errorMsg.includes('NJS-138') || errorMsg.includes('not supported by node-oracledb in Thin mode')) {
+          console.error("");
+          console.error("❌ =========================================");
+          console.error("❌ NJS-138 ERROR: Oracle Version Not Supported");
+          console.error("❌ =========================================");
+          console.error("");
+          console.error("Your Oracle database (11g/ora11g) requires Thick mode.");
+          console.error("Thin mode only supports Oracle 12.1.0.2 and later.");
+          console.error("");
+          console.error("💡 SOLUTION: Install Oracle Instant Client");
+          console.error("📖 See backend/ORACLE_INSTANT_CLIENT_INSTALL.md for detailed instructions");
+          console.error("");
+          throw new Error("NJS-138: Oracle 11g requires Thick mode. Install Oracle Instant Client. See ORACLE_INSTANT_CLIENT_INSTALL.md");
+        }
+        
         throw new Error(`Failed to initialize Oracle connection pool: ${initError.message}. Please check your .env file and ensure ORACLE_USER, ORACLE_PASSWORD, and ORACLE_CONNECTION_STRING are set correctly.`);
       }
     }
