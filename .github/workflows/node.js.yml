@@ -12,6 +12,9 @@ jobs:
   deploy:
     runs-on: self-hosted
     timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: backend
 
     steps:
       - name: Checkout repository
@@ -21,6 +24,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "20"
+          cache: "npm"
+          cache-dependency-path: backend/package-lock.json
 
       - name: Install dependencies
         run: |
