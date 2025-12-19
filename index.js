@@ -2,7 +2,7 @@ const express = require("express");
 const oracledb = require("oracledb");
 const dotenv = require("dotenv");
 const cors = require("cors");
-
+const { initOracleClient } = require("./config/oracleClient.js");
 
 dotenv.config();
 
@@ -10,14 +10,49 @@ const app = express();
 app.use(express.json());
 app.use(cors());
 
-// oracledb.initOracleClient({ libDir: "C:/oracle/instantclient_23_9" });
-
 let pool;
+
+// Validate required environment variables
+function validateEnv() {
+  const required = [
+    'ORACLE_USER',
+    'ORACLE_PASSWORD',
+    'ORACLE_CONNECTION_STRING'
+  ];
+
+  const missing = required.filter(key => !process.env[key] || process.env[key].trim() === '');
+  
+  if (missing.length > 0) {
+    const errorMsg = `❌ Missing or empty required environment variables: ${missing.join(', ')}\n` +
+                     `Please check your .env file and ensure these variables are set:\n` +
+                     missing.map(key => `  - ${key}`).join('\n');
+    console.error(errorMsg);
+    throw new Error(errorMsg);
+  }
+
+  console.log('✅ All required Oracle environment variables are set');
+  console.log('🔧 Oracle Config:', {
+    user: process.env.ORACLE_USER,
+    connectString: process.env.ORACLE_CONNECTION_STRING ? 
+      (process.env.ORACLE_CONNECTION_STRING.length > 50 ? 
+        process.env.ORACLE_CONNECTION_STRING.substring(0, 50) + '...' : 
+        process.env.ORACLE_CONNECTION_STRING) : 
+      'NOT SET'
+  });
+}
 
 // Initialize Oracle connection pool
 async function initPool() {
   try {
-    pool = await oracledb.createPool({
+    // Validate environment variables first
+    validateEnv();
+    
+    // Initialize Oracle client (will use thin mode if no client found)
+    initOracleClient();
+    
+    console.log("📡 Creating Oracle connection pool...");
+    
+    const dbConfig = {
       user: process.env.ORACLE_USER,
       password: process.env.ORACLE_PASSWORD,
       connectString: process.env.ORACLE_CONNECTION_STRING,
@@ -27,10 +62,18 @@ async function initPool() {
       connectTimeout: 10,   // fail if DB not reachable in 10s
       queueTimeout: 10000,  // fail if waiting >10s
       stmtCacheSize: 0
-    });
+    };
+
+    pool = await oracledb.createPool(dbConfig);
     console.log("✅ Oracle connection pool started");
   } catch (err) {
-    console.error("❌ Pool init failed:", err);
+    console.error("❌ Pool init failed:", err.message);
+    if (err.code === 'NJS-125') {
+      console.error("\n💡 TROUBLESHOOTING:");
+      console.error("   The Oracle connectString is empty or undefined.");
+      console.error("   Please check your .env file and ensure ORACLE_CONNECTION_STRING is set.");
+      console.error("   Format example: hostname:port/service_name or hostname:port:SID");
+    }
     process.exit(1);
   }
 }
@@ -318,7 +361,7 @@ app.get("/tables", async (req, res) => {
 
 
 // Start server
-const port = 3000;
+const port = 3004;
 app.listen(port, async () => {
   await initPool();
   console.log(`🚀 Server running at http://localhost:${port}`);

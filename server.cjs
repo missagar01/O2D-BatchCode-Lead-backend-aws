@@ -82,7 +82,7 @@ const server = app.listen(port, async () => {
         await initPool();
         
         // Additional delay to ensure tunnel is fully ready for PostgreSQL connections
-        await new Promise(resolve => setTimeout(resolve, 3000)); // Increased wait time
+        await new Promise(resolve => setTimeout(resolve, 3004)); // Increased wait time
         
         // Initialize PostgreSQL connections sequentially to avoid overwhelming the tunnel
         // Make them optional - don't fail server startup if PostgreSQL is unavailable
