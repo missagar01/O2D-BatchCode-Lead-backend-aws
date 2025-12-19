@@ -1,7 +1,7 @@
-import express from "express";
-import oracledb from "oracledb";
-import dotenv from "dotenv";
-import cors from "cors";
+const express = require("express");
+const oracledb = require("oracledb");
+const dotenv = require("dotenv");
+const cors = require("cors");
 
 
 dotenv.config();
