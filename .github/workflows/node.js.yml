@@ -1,33 +1,50 @@
-# This workflow will do a clean installation of node dependencies, cache/restore them, build the source code and run tests across different versions of node
-# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-nodejs
-
-name: Node.js CI
+name: Node.js CI (Self Hosted)
 
 on:
   push:
-    branches: [ "master" ]
-  pull_request:
-    branches: [ "master" ]
+    branches: ["master"]
 
 jobs:
   build:
+    runs-on: self-hosted
 
-    runs-on: ubuntu-latest
+    workspace:
+      clean: false   # _work folder delete nahi hoga
 
-    strategy:
-      matrix:
-        node-version: [18.x, 20.x, 22.x]
-        # See supported Node.js release schedule at https://nodejs.org/en/about/releases/
+    defaults:
+      run:
+        working-directory: backend
 
     steps:
-    - uses: actions/checkout@v4
-    - name: Use Node.js ${{ matrix.node-version }}
-      uses: actions/setup-node@v4
-      with:
-        node-version: ${{ matrix.node-version }}
-        cache: 'npm'
-    - run: npm ci
-    - run: npm run build --if-present
-    - run: npm test
+      # 1️⃣ Checkout code (_work folder me)
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
+      # 2️⃣ Node 20 setup
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
 
+      # 3️⃣ Debug (1 time ke liye helpful)
+      - name: Debug workspace
+        run: |
+          echo "PWD:"
+          pwd
+          echo "FILES:"
+          ls -la
+
+      # 4️⃣ Install dependencies
+      - name: Install dependencies
+        run: npm ci
+
+      # 5️⃣ PM2 start / restart backend (AUTO on AWS)
+      - name: Start or Restart Backend with PM2
+        run: |
+          pm2 describe o2d-backend >/dev/null 2>&1 \
+            && pm2 restart o2d-backend --update-env \
+            || pm2 start npm --name "o2d-backend" -- start
+
+          pm2 save
