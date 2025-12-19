@@ -10,7 +10,7 @@ const app = express();
 app.use(express.json());
 app.use(cors());
 
-oracledb.initOracleClient({ libDir: "C:/oracle/instantclient_23_9" });
+// oracledb.initOracleClient({ libDir: "C:/oracle/instantclient_23_9" });
 
 let pool;
 
