@@ -14,9 +14,43 @@ const corsOrigins = corsOriginsEnv
   ? corsOriginsEnv.split(",").map((origin) => origin.trim()).filter(Boolean)
   : ["*"];
 
+// Default CORS origins for development and production
+const defaultOrigins = [
+  "http://localhost:5173",
+  "http://localhost:3000",
+  "http://localhost:5174",
+  "https://o2d-batch-lead.sagartmt.com"
+];
+
 const corsOptions = corsOrigins.includes("*")
-  ? { origin: true, credentials: true }
-  : { origin: corsOrigins, credentials: true };
+  ? { 
+      origin: function (origin, callback) {
+        // Allow requests with no origin (like mobile apps or curl requests)
+        if (!origin) return callback(null, true);
+        // Allow all origins if CORS_ORIGINS is "*"
+        callback(null, true);
+      },
+      credentials: true,
+      methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+      allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+      exposedHeaders: ['Content-Range', 'X-Content-Range']
+    }
+  : { 
+      origin: function (origin, callback) {
+        // Allow requests with no origin
+        if (!origin) return callback(null, true);
+        // Check if origin is in allowed list
+        if (corsOrigins.includes(origin)) {
+          callback(null, true);
+        } else {
+          callback(new Error('Not allowed by CORS'));
+        }
+      },
+      credentials: true,
+      methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+      allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+      exposedHeaders: ['Content-Range', 'X-Content-Range']
+    };
 
 const apiRouter = express.Router();
 apiRouter.use("/o2d", o2dRoutes);
@@ -29,7 +63,11 @@ app.set("trust proxy", 1);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cors(corsOptions));
-app.use(helmet());
+// Configure helmet to work with CORS
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" },
+  crossOriginEmbedderPolicy: false
+}));
 app.use(compression());
 
 app.use("/api", apiRouter);

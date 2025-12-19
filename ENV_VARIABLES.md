@@ -42,7 +42,16 @@ Create a `.env` file in the `backend/` directory with the following variables:
 NODE_ENV=production
 PORT=3000
 LOG_LEVEL=info
-CORS_ORIGINS=*
+
+# CORS Configuration (Important for frontend access)
+# Allow all origins (development):
+# CORS_ORIGINS=*
+# 
+# Allow specific origins (production - recommended):
+# CORS_ORIGINS=http://localhost:5173,https://o2d-batch-lead.sagartmt.com
+# 
+# For both local development and production:
+CORS_ORIGINS=http://localhost:5173,http://localhost:3000,https://o2d-batch-lead.sagartmt.com
 
 # ============================================
 # Oracle Database Configuration (REQUIRED)
@@ -194,4 +203,6 @@ JWT_EXPIRES_IN=1d
 - [ ] Set PostgreSQL variables (if using batchcode/lead-to-order)
 - [ ] Restart PM2: `pm2 restart o2d-backend`
 - [ ] Check logs: `pm2 logs o2d-backend`
+
+
 
