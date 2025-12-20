@@ -14,7 +14,10 @@ const getAdminOverview = async (req, res) => {
   const uniqueCode =
     normalizeStringParam(req.params.unique_code) ?? normalizeStringParam(req.query.unique_code);
 
-  const { tables, counts, appliedFilters } = await adminService.getAdminTablesSnapshot({ uniqueCode });
+  const { tables, counts, appliedFilters } = await adminService.getAdminTablesSnapshot({
+    uniqueCode,
+    user: req.user
+  });
 
   res
     .status(StatusCodes.OK)
