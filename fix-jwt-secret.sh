@@ -61,3 +61,5 @@ echo "  1. Restart PM2: pm2 restart o2d-lead-batch --update-env"
 echo "  2. Check logs: pm2 logs o2d-lead-batch --lines 30"
 echo ""
 
+
+

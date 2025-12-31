@@ -359,6 +359,43 @@ app.get("/tables", async (req, res) => {
   }
 });
 
+app.get("/o2d-gate-process", async (req, res) => {
+  let conn;
+  const entityCode = (req.query.entity || "SR").toUpperCase();
+  const query = `
+select to_char(t.vrdate,'dd/mm/yyyy hh:mi:ss') as gate_entry_timestamp,
+       t.vrno as gate_entry_number,
+       t.order_vrno as loading_order_number,
+       lhs_utility.get_name('acc_code',t.acc_code) as party_name,
+       t.truckno,
+       t.Wslip_No,
+       to_char(t.vrdate + INTERVAL '10' MINUTE,'dd/mm/yyyy hh:mi:ss') as first_weight_planned,
+       to_char((select a.indate from view_weighbridge_engine a where a.wslipno = t.Wslip_No and a.entity_code = :entityCode),'dd/mm/yyyy hh:mi:ss') as first_weight_actual,
+       to_char((select a.indate from view_weighbridge_engine a where a.wslipno = t.Wslip_No and a.entity_code = :entityCode) + INTERVAL '4' HOUR,'dd/mm/yyyy hh:mi:ss') as planned_second_weight,
+       to_char((select a.outdate from view_weighbridge_engine a where a.wslipno = t.Wslip_No and a.entity_code = :entityCode),'dd/mm/yyyy hh:mi:ss') as actual_second_weight,
+       to_char((select a.outdate from view_weighbridge_engine a where a.wslipno = t.Wslip_No and a.entity_code = :entityCode) + INTERVAL '10' MINUTE,'dd/mm/yyyy hh:mi:ss') as planned_invoice_timestamp,
+       to_char((select distinct B.vrdate from view_itemtran_engine b where b.wslipno = t.Wslip_No and b.entity_code = :entityCode),'dd/mm/yyyy hh:mi:ss') as actual_invoice_timestamp,
+       (select distinct B.vrno from view_itemtran_engine b where b.wslipno = t.Wslip_No and b.entity_code = :entityCode) as invoice_number,
+       to_char((select distinct B.vrdate from view_itemtran_engine b where b.wslipno = t.Wslip_No and b.entity_code = :entityCode) + INTERVAL '30' MINUTE,'dd/mm/yyyy hh:mi:ss') as gate_out_planned,
+       to_char(t.outdate,'dd/mm/yyyy hh:mi:ss') as gate_out_actual
+from view_gatetran_engine t
+where t.entity_code = :entityCode
+      and t.series='SE'
+      and t.outdate is null
+order by to_char(t.vrdate,'dd/mm/yyyy hh:mi:ss') asc`;
+
+  try {
+    conn = await pool.getConnection();
+    const result = await conn.execute(query, { entityCode }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
+    res.json({ entity: entityCode, rowCount: result.rows.length, rows: result.rows });
+  } catch (err) {
+    console.error("O2D gate process query failed:", err);
+    res.status(500).json({ error: err.message });
+  } finally {
+    if (conn) await conn.close();
+  }
+});
+
 
 // Start server
 const port = 3004;

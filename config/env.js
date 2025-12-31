@@ -15,20 +15,6 @@ const envSchema = z.object({
   DATABASE_URL: z.string().optional(),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
   CORS_ORIGINS: z.string().optional(),
-  PG_HOST: z.string().optional(),
-  PG_PORT: z
-    .string()
-    .default('5432')
-    .transform((value) => Number(value))
-    .refine((value) => Number.isInteger(value) && value > 0, 'PG_PORT must be a positive integer'),
-  PG_USER: z.string().optional(),
-  PG_PASSWORD: z.string().optional(),
-  PG_DATABASE: z.string().optional(),
-  PG_NAME: z.string().optional(), // Login database name (checklist-delegation)
-  PG_SSL: z
-    .enum(['true', 'false'])
-    .default('false')
-    .transform((value) => value === 'true'),
   DB_HOST: z.string().optional(),
   DB_PORT: z
     .string()
@@ -55,21 +41,21 @@ const config = {
   corsOrigins: parsedEnv.CORS_ORIGINS?.split(',').map((origin) => origin.trim()).filter(Boolean) ?? ['*'],
   // Main database for batchcode and lead-to-order (uses DB_* variables)
   postgres: {
-    host: parsedEnv.DB_HOST ?? parsedEnv.PG_HOST,
-    port: parsedEnv.DB_PORT ?? parsedEnv.PG_PORT ?? 5432,
-    user: parsedEnv.DB_USER ?? parsedEnv.PG_USER,
-    password: parsedEnv.DB_PASSWORD ?? parsedEnv.PG_PASSWORD,
-    database: parsedEnv.DB_NAME ?? parsedEnv.PG_DATABASE,
-    ssl: parsedEnv.DB_SSL ?? parsedEnv.PG_SSL
+    host: parsedEnv.DB_HOST,
+    port: parsedEnv.DB_PORT ?? 5432,
+    user: parsedEnv.DB_USER,
+    password: parsedEnv.DB_PASSWORD,
+    database: parsedEnv.DB_NAME,
+    ssl: parsedEnv.DB_SSL
   },
-  // Auth/Login database (uses PG_* variables, database name from PG_NAME)
+  // Auth/Login database (uses DB_* variables, same database)
   authDatabase: {
-    host: parsedEnv.PG_HOST ?? parsedEnv.DB_HOST,
-    port: parsedEnv.PG_PORT ?? parsedEnv.DB_PORT ?? 5432,
-    user: parsedEnv.PG_USER ?? parsedEnv.DB_USER,
-    password: parsedEnv.PG_PASSWORD ?? parsedEnv.DB_PASSWORD,
-    database: parsedEnv.PG_NAME ?? parsedEnv.PG_DATABASE ?? parsedEnv.DB_NAME,
-    ssl: parsedEnv.PG_SSL ?? parsedEnv.DB_SSL
+    host: parsedEnv.DB_HOST,
+    port: parsedEnv.DB_PORT ?? 5432,
+    user: parsedEnv.DB_USER,
+    password: parsedEnv.DB_PASSWORD,
+    database: parsedEnv.DB_NAME,
+    ssl: parsedEnv.DB_SSL
   },
   jwt: {
     secret: parsedEnv.JWT_SECRET,

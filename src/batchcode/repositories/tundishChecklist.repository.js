@@ -22,8 +22,27 @@ const insertTundishChecklist = async (payload) => {
     unique_code
   } = payload;
 
+  // Ensure sequence exists and use it for id
+  // First, try to ensure the sequence exists (idempotent)
+  const pool = getPool();
+  try {
+    await pool.query(`
+      CREATE SEQUENCE IF NOT EXISTS tundish_checklist_id_seq;
+      SELECT setval('tundish_checklist_id_seq', COALESCE((SELECT MAX(id) FROM tundish_checklist), 0) + 1, false);
+    `);
+  } catch (seqError) {
+    // If sequence creation fails, try to set it if it exists
+    try {
+      await pool.query(`SELECT setval('tundish_checklist_id_seq', COALESCE((SELECT MAX(id) FROM tundish_checklist), 0) + 1, false);`);
+    } catch (e) {
+      // Ignore - sequence might not exist, will use DEFAULT
+    }
+  }
+
+  // Use nextval for id, or DEFAULT if sequence doesn't work
   const query = `
     INSERT INTO tundish_checklist (
+      id,
       sample_timestamp,
       tundish_number,
       nozzle_plate_check,
@@ -44,6 +63,7 @@ const insertTundishChecklist = async (payload) => {
       unique_code
     )
     VALUES (
+      nextval('tundish_checklist_id_seq'),
       $1, $2, $3, $4, $5,
       $6, $7, $8, $9, $10,
       $11, $12, $13, $14, $15,

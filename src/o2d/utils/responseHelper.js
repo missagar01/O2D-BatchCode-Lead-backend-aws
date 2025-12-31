@@ -27,3 +27,5 @@ function sendJsonResponse(req, res, statusCode, data) {
 
 module.exports = { setCorsHeaders, sendJsonResponse };
 
+
+

@@ -1,21 +1,30 @@
 const { z } = require('zod');
 
 const decimalField = z
-  .union([z.number(), z.string(), z.null()])
+  .union([z.number(), z.string(), z.null(), z.undefined()])
   .optional()
-  .refine((value) => {
-    if (value === undefined || value === null || value === '') {
-      return true;
-    }
-    const numericValue = typeof value === 'number' ? value : Number(value);
-    return Number.isFinite(numericValue);
-  }, 'Value must be numeric')
   .transform((value) => {
-    if (value === undefined || value === null || value === '') {
+    // Handle empty strings, null, undefined - convert to null
+    if (value === undefined || value === null || value === '' || (typeof value === 'string' && value.trim() === '')) {
       return null;
     }
-    return typeof value === 'number' ? value : Number(value);
-  });
+    const numericValue = typeof value === 'number' ? value : Number(value);
+    if (!Number.isFinite(numericValue) || isNaN(numericValue)) {
+      return null;
+    }
+    // NUMERIC(10,4) means max 10 digits total, 4 decimal places
+    // Max value: 999999.9999, Min value: -999999.9999
+    if (Math.abs(numericValue) > 999999.9999) {
+      // Clamp to max/min value
+      return numericValue > 0 ? 999999.9999 : -999999.9999;
+    }
+    // Round to 4 decimal places to fit NUMERIC(10,4)
+    return Math.round(numericValue * 10000) / 10000;
+  })
+  .refine((value) => {
+    // After transform, value should be null or a valid number
+    return value === null || (typeof value === 'number' && Number.isFinite(value));
+  }, 'Value must be numeric and fit within NUMERIC(10,4) range (max 999999.9999)');
 
 const nullableString = z
   .union([z.string(), z.null()])

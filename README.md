@@ -12,6 +12,7 @@
 - JWT protection:
   - All protected endpoints require a `Bearer <token>` issued by the single login endpoint `/api/auth/login`.
   - All modules (batchcode, o2d, lead-to-order) use the same JWT_SECRET and validate tokens from the shared login.
+- Redis cache: `/api/o2d/process/timeline` caches its results in Redis for `GATE_PROCESS_CACHE_TTL_SECONDS` seconds (default `60`) to speed up repeated queries; ensure `REDIS_URL` points at a working server.
 
 ## Root routes (non-`/api`)
 
@@ -55,6 +56,11 @@
   **Single login endpoint for all modules** (batchcode, o2d, lead-to-order).  
   Body: `{ "username" | "user_name", "password" }`. Returns `{ success, data: { user, token } }`. The user object matches the Postgres `users` table (id, email, department, role, etc.).  
   **All modules use this same token** - no separate login endpoints needed.
+  The response now includes `user_access`, `page_access`, and `system_access` when available so every module can respect the same permission metadata.
+
+- `POST /api/auth/logout`  
+  Stateless endpoint for logging out. Clears nothing server-side but returns `{ success: true }` so clients can drop tokens and redirect to login.
+  The response now includes `user_access`, `page_access`, and `system_access` when available so downstream services can respect the same permission metadata.
 
 ## `/api/o2d` module
 Base path: `/api/o2d`. Uses Oracle via SSH tunnel; responses are plain JSON objects with `success`/`data`.
@@ -89,6 +95,11 @@ Base path: `/api/o2d`. Uses Oracle via SSH tunnel; responses are plain JSON obje
 
 - `GET /api/o2d/gate-out/customers`  
   Returns an array of unique customer names.
+
+### Gate process timeline
+
+- `GET /api/o2d/process/timeline`  
+  Returns the gate-to-invoice timeline for live `SE` entries (default `entity=SR`). The optional `entity` query parameter binds into the Oracle query, and the response includes `entity`, `totalCount`, and all gate, weighbridge, invoice, and planned timestamps.
 
 ### Payment
 
@@ -182,6 +193,29 @@ Paths are prefixed with `/api/lead-to-order` and guarded by the JWT issued by `P
 
 - `GET /api/lead-to-order/followup/dropdowns`  
   Returns `{ customerSay, enquiryApproach, productCategories }`.
+
+### User Management
+
+- `/api/lead-to-order/users` *(JWT protected, admin only)*  
+  Provides CRUD over the shared `users` table. `GET` lists records, `POST` creates (passwords are hashed before insert), `PUT /:id` updates mutable fields, and `DELETE /:id` removes the row. Responses return the sanitized row and mirror the same `user_access`, `page_access`, and `system_access` columns used across modules.
+
+  **Create request example (JSON body)**  
+  ```json
+  {
+    "user_name": "johndoe",
+    "password": "superSecure123!",
+    "email_id": "john@example.com",
+    "number": "9812345678",
+    "department": "lead-to-order",
+    "role": "user",
+    "status": "active",
+    "user_access": "lead-dashboard,lead-followup",
+    "page_access": "leads,followup",
+    "system_access": "crm,quotations",
+    "remark": "Imported from HR",
+    "employee_id": "EMP1234"
+  }
+  ```
 
 ### Quotations
 
@@ -408,3 +442,5 @@ Each module's middleware validates tokens from the shared login endpoint.
 - `GET /store-indent/history` - Indent history
 - `GET /tables` - List tables in SRMPLERP schema
 
+### O2D Module Highlights
+  - `GET /api/o2d/process/timeline` - Gate-to-invoice timeline with optional `entity` query filter.

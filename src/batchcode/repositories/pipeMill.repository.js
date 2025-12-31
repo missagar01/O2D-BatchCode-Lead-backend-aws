@@ -19,8 +19,26 @@ const insertPipeMill = async (payload) => {
     unique_code
   } = payload;
 
+  // Ensure sequence exists and use it for id
+  const pool = getPool();
+  try {
+    await pool.query(`
+      CREATE SEQUENCE IF NOT EXISTS pipe_mill_id_seq;
+      SELECT setval('pipe_mill_id_seq', COALESCE((SELECT MAX(id) FROM pipe_mill), 0) + 1, false);
+    `);
+  } catch (seqError) {
+    // If sequence creation fails, try to set it if it exists
+    try {
+      await pool.query(`SELECT setval('pipe_mill_id_seq', COALESCE((SELECT MAX(id) FROM pipe_mill), 0) + 1, false);`);
+    } catch (e) {
+      // Ignore - sequence might not exist, will use DEFAULT
+    }
+  }
+
+  // Use nextval for id, or DEFAULT if sequence doesn't work
   const query = `
     INSERT INTO pipe_mill (
+      id,
       sample_timestamp,
       recoiler_short_code,
       mill_number,
@@ -38,6 +56,7 @@ const insertPipeMill = async (payload) => {
       unique_code
     )
     VALUES (
+      nextval('pipe_mill_id_seq'),
       $1, $2, $3, $4, $5,
       $6, $7, $8, $9, $10,
       $11, $12, $13, $14, $15
@@ -59,11 +78,11 @@ const insertPipeMill = async (payload) => {
     size,
     thickness,
     remarks,
-    picture,
+    picture, // This is already a URL from fileUpload middleware
     unique_code
   ];
 
-  const { rows } = await getPool().query(query, values);
+  const { rows } = await pool.query(query, values);
   return rows[0];
 };
 

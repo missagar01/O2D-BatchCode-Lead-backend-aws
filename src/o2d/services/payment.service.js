@@ -1,9 +1,13 @@
 const { getConnection } = require("../config/db.js");
 const oracledb = require("oracledb");
+const { generateCacheKey, withCache, DEFAULT_TTL } = require("../utils/cacheHelper.js");
 
 // 🟢 Payment Pending Data with Filters
 async function getPendingPaymentData(offset = 0, limit = 50, customer = '', search = '') {
-  let whereClause = `
+  const cacheKey = generateCacheKey("payment:pending", { offset, limit, customer, search });
+  
+  return await withCache(cacheKey, DEFAULT_TTL.PENDING, async () => {
+    let whereClause = `
     WHERE t.entity_code = 'SR'
       AND t.series = 'SA'
       AND t.acc_code NOT IN ('4CA01','ZGA01', 'ZGA02', 'ZMA01', 'ZPA01', 'ZSH01', 'ZSO01', 'ZSO02', 'ZSO03', 'ZSO04','4AL01','1GA18')
@@ -90,11 +94,15 @@ async function getPendingPaymentData(offset = 0, limit = 50, customer = '', sear
   } finally {
     if (connection) await connection.close();
   }
+  });
 }
 
 // 🟣 Payment History Data with Filters
 async function getPaymentHistoryData(offset = 0, limit = 50, customer = '', search = '') {
-  let whereClause = `
+  const cacheKey = generateCacheKey("payment:history", { offset, limit, customer, search });
+  
+  return await withCache(cacheKey, DEFAULT_TTL.HISTORY, async () => {
+    let whereClause = `
     WHERE t.entity_code = 'SR'
       AND t.series = 'SA'
       AND t.acc_code NOT IN ('4CA01','ZGA01', 'ZGA02', 'ZMA01', 'ZPA01', 'ZSH01', 'ZSO01', 'ZSO02', 'ZSO03', 'ZSO04','4AL01','1GA18')
@@ -178,11 +186,15 @@ async function getPaymentHistoryData(offset = 0, limit = 50, customer = '', sear
   } finally {
     if (connection) await connection.close();
   }
+  });
 }
 
 // 🟩 Get all unique customers for payment section
 async function getAllPaymentCustomers() {
-  const query = `
+  const cacheKey = generateCacheKey("payment:customers", {});
+  
+  return await withCache(cacheKey, DEFAULT_TTL.CUSTOMERS, async () => {
+    const query = `
     SELECT DISTINCT lhs_utility.get_name('acc_code', acc_code) AS customer_name
     FROM view_itemtran_engine 
     WHERE entity_code = 'SR'
@@ -200,6 +212,7 @@ async function getAllPaymentCustomers() {
   } finally {
     if (connection) await connection.close();
   }
+  });
 }
 
 module.exports = {

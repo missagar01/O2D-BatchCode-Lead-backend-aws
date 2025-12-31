@@ -1,9 +1,13 @@
 const { getConnection } = require("../config/db.js");
 const oracledb = require("oracledb");
+const { generateCacheKey, withCache, DEFAULT_TTL } = require("../utils/cacheHelper.js");
 
 // 🟢 Pending with Filters
 async function getPendingFirstWeight(offset = 0, limit = 50, customer = '', search = '') {
-  let whereClause = `
+  const cacheKey = generateCacheKey("first-weight:pending", { offset, limit, customer, search });
+  
+  return await withCache(cacheKey, DEFAULT_TTL.PENDING, async () => {
+    let whereClause = `
     WHERE t.entity_code = 'SR'
       AND t.order_tcode = 'O'
       AND (SELECT DISTINCT a.div_code 
@@ -74,11 +78,15 @@ async function getPendingFirstWeight(offset = 0, limit = 50, customer = '', sear
   } finally {
     if (connection) await connection.close();
   }
+  });
 }
 
 // 🟣 History with Filters
 async function getFirstWeightHistory(offset = 0, limit = 50, customer = '', search = '') {
-  let whereClause = `
+  const cacheKey = generateCacheKey("first-weight:history", { offset, limit, customer, search });
+  
+  return await withCache(cacheKey, DEFAULT_TTL.HISTORY, async () => {
+    let whereClause = `
     WHERE t.entity_code = 'SR'
       AND t.wslip_no IS NOT NULL
       AND (
@@ -165,6 +173,7 @@ async function getFirstWeightHistory(offset = 0, limit = 50, customer = '', sear
   } finally {
     if (connection) await connection.close();
   }
+  });
 }
 
 module.exports = { getPendingFirstWeight, getFirstWeightHistory };

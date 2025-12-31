@@ -58,6 +58,8 @@ const verifyToken = async (req, res, next) => {
       role: decoded.role,
       id: decoded.id,
       user_access: decoded.user_access,
+      page_access: decoded.page_access,
+      system_access: decoded.system_access,
     };
 
     next();
@@ -260,7 +262,6 @@ const updatePassword = async (req, res) => {
 
 module.exports = {
   verifyToken,
-  // login removed - use /api/auth/login instead
   getUserData,
   createUser,
   updatePassword,

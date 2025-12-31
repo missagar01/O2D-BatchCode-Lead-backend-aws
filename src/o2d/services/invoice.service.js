@@ -1,8 +1,12 @@
 const { getConnection } = require("../config/db.js");
 const oracledb = require("oracledb");
+const { generateCacheKey, withCache, DEFAULT_TTL } = require("../utils/cacheHelper.js");
 
 async function getPendingInvoiceData(offset = 0, limit = 50, customer = '', search = '') {
-  let whereClause = `
+  const cacheKey = generateCacheKey("invoice:pending", { offset, limit, customer, search });
+  
+  return await withCache(cacheKey, DEFAULT_TTL.PENDING, async () => {
+    let whereClause = `
     WHERE t.entity_code = 'SR'
       AND t.tcode = 'S'
       AND t.outdate IS NOT NULL
@@ -87,11 +91,15 @@ async function getPendingInvoiceData(offset = 0, limit = 50, customer = '', sear
   } finally {
     if (connection) await connection.close();
   }
+  });
 }
 
 // 🟣 Invoice History Data with Filters
 async function getInvoiceHistoryData(offset = 0, limit = 50, customer = '', search = '') {
-  let whereClause = `
+  const cacheKey = generateCacheKey("invoice:history", { offset, limit, customer, search });
+  
+  return await withCache(cacheKey, DEFAULT_TTL.HISTORY, async () => {
+    let whereClause = `
     WHERE t.entity_code = 'SR'
       AND t.series = 'SA'
       AND t.div_code = 'PM'
@@ -171,6 +179,7 @@ async function getInvoiceHistoryData(offset = 0, limit = 50, customer = '', sear
   } finally {
     if (connection) await connection.close();
   }
+  });
 }
 
 module.exports = {

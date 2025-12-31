@@ -9,16 +9,16 @@ let loginPool; // Separate pool for login database
 
 function createPool() {
   // AWS RDS requires SSL, so enable it automatically for RDS hosts
-  const pgHost = process.env.PG_HOST || process.env.DB_HOST || "";
-  const isRDS = pgHost.includes("rds.amazonaws.com");
-  const useSSL = isRDS || String(process.env.PG_SSL || "").toLowerCase() === "true";
+  const dbHost = process.env.DB_HOST || "";
+  const isRDS = dbHost.includes("rds.amazonaws.com");
+  const useSSL = isRDS || String(process.env.DB_SSL || "").toLowerCase() === "true";
   
   // Check if we should use SSH tunnel (if SSH_HOST is set and tunnel is actually active)
   // For AWS RDS, don't use SSH tunnel - connect directly
   const useTunnel = process.env.SSH_HOST && isTunnelActive() && !isRDS;
   
-  const host = useTunnel ? '127.0.0.1' : pgHost;
-  const port = useTunnel ? getLocalPostgresPort() : (Number(process.env.PG_PORT || process.env.DB_PORT) || 5432);
+  const host = useTunnel ? '127.0.0.1' : dbHost;
+  const port = useTunnel ? getLocalPostgresPort() : (Number(process.env.DB_PORT) || 5432);
 
   // If pool exists, check if it's still valid
   if (pool) {
@@ -49,13 +49,12 @@ function createPool() {
   }
 
   // Main pool uses DB_* variables (for batchcode and lead-to-order)
-  // Fallback to PG_* if DB_* not set
   pool = new Pool({
     host,
     port,
-    user: process.env.DB_USER || process.env.PG_USER,
-    password: process.env.DB_PASSWORD || process.env.PG_PASSWORD,
-    database: process.env.DB_NAME || process.env.PG_DATABASE,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    database: process.env.DB_NAME,
     ssl: useSSL ? { rejectUnauthorized: false } : false,
     max: 10,
     connectionTimeoutMillis: isRDS ? 20000 : 15000, // Longer timeout for RDS
@@ -105,19 +104,19 @@ async function pgQuery(text, params = []) {
 
 function createLoginPool() {
   // AWS RDS requires SSL, so enable it by default for RDS hosts
-  const pgHost = process.env.PG_HOST || process.env.DB_HOST || "";
-  const isRDS = pgHost.includes("rds.amazonaws.com");
-  const useSSL = isRDS || String(process.env.PG_SSL || "").toLowerCase() === "true";
+  const dbHost = process.env.DB_HOST || "";
+  const isRDS = dbHost.includes("rds.amazonaws.com");
+  const useSSL = isRDS || String(process.env.DB_SSL || "").toLowerCase() === "true";
   
   // For RDS, don't use SSH tunnel - connect directly
   // SSH tunnel is only for on-premise servers
   const useTunnel = process.env.SSH_HOST && isTunnelActive() && !isRDS;
   
-  const host = useTunnel ? '127.0.0.1' : pgHost;
-  const port = useTunnel ? getLocalPostgresPort() : (Number(process.env.PG_PORT || process.env.DB_PORT) || 5432);
+  const host = useTunnel ? '127.0.0.1' : dbHost;
+  const port = useTunnel ? getLocalPostgresPort() : (Number(process.env.DB_PORT) || 5432);
   
-  // Use PG_NAME for login database, fallback to PG_DATABASE or DB_NAME
-  const loginDatabase = process.env.PG_NAME || process.env.PG_DATABASE || process.env.DB_NAME;
+  // Login database uses DB_NAME
+  const loginDatabase = process.env.DB_NAME;
 
   // If pool exists but connection config changed, recreate it
   if (loginPool) {
@@ -137,12 +136,12 @@ function createLoginPool() {
     console.log(`📡 Login Database: Using direct connection (${host}:${port}) - Database: ${loginDatabase}${useSSL ? ' (SSL enabled)' : ''}`);
   }
 
-  // Login pool uses PG_* variables (for auth/login)
+  // Login pool uses DB_* credentials
   loginPool = new Pool({
     host,
     port,
-    user: process.env.PG_USER || process.env.DB_USER,
-    password: process.env.PG_PASSWORD || process.env.DB_PASSWORD,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
     database: loginDatabase,
     ssl: useSSL ? { rejectUnauthorized: false } : false,
     connectionTimeoutMillis: isRDS ? 20000 : 15000, // Longer timeout for RDS

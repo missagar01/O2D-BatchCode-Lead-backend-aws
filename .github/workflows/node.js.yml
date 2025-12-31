@@ -18,6 +18,16 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Restore .env (persistent on EC2)
+        run: |
+          if [ ! -f "/home/ubuntu/secrets/o2d-backend/.env" ]; then
+            echo "❌ Missing /home/ubuntu/secrets/o2d-backend/.env"
+            exit 1
+          fi
+          cp /home/ubuntu/secrets/o2d-backend/.env .env
+          chmod 600 .env
+          echo "✅ .env restored"
+
       - name: Setup Node.js 20
         uses: actions/setup-node@v4
         with:
@@ -31,7 +41,7 @@ jobs:
       - name: Start/Restart Backend (PM2)
         run: |
           pm2 describe o2d-backend >/dev/null 2>&1 \
-            && pm2 restart o2d-backend --update-env \
+            && pm2 restart o2d-backend --update-env --cwd "$(pwd)" \
             || pm2 start server.cjs --name o2d-backend --cwd "$(pwd)"
           pm2 save
 

@@ -1,5 +1,6 @@
 const express = require("express");
 const authRoutes = require("./auth.routes.js");
+const usersRoutes = require("./users.routes.js");
 const dashboardRoutes = require("./dashboard.routes.js");
 const directEnquiryFormRoutes = require("./directEnquiryForm.routes.js");
 const directEnquiryFormDropdownRoutes = require("./directEnquiryFormDropdown.routes.js");
@@ -17,6 +18,7 @@ const quotationLeadRoutes = require("./quotationLead.routes.js");
 const router = express.Router();
 
 router.use("/auth", authRoutes);
+router.use("/users", usersRoutes);
 router.use("/dashboard", dashboardRoutes);
 router.use("/leads", leadsRoutes);
 router.use("/lead-dropdown", leadDropdownRoutes);
@@ -34,3 +36,5 @@ router.use("/follow-up", followupDropdownRoutes);
 router.use("/followup", followupDropdownRoutes); // Support both formats
 
 module.exports = router;
+
+

@@ -1,10 +1,13 @@
 const { getConnection } = require("../config/db.js");
 const oracledb = require("oracledb");
+const { generateCacheKey, withCache, DEFAULT_TTL } = require("../utils/cacheHelper.js");
 
 // 🟢 Pending Gate Out Data with Filters
-async function getPendingGateOutData(offset = 0, limit = 50, customer = '', search = '')
- {
-  let whereClause = `
+async function getPendingGateOutData(offset = 0, limit = 50, customer = '', search = '') {
+  const cacheKey = generateCacheKey("gate-out:pending", { offset, limit, customer, search });
+  
+  return await withCache(cacheKey, DEFAULT_TTL.PENDING, async () => {
+    let whereClause = `
     WHERE t.entity_code = 'SR'
       AND t.order_tcode = 'O'
       AND t.outdate IS NULL
@@ -82,11 +85,15 @@ async function getPendingGateOutData(offset = 0, limit = 50, customer = '', sear
   } finally {
     if (connection) await connection.close();
   }
+  });
 }
 
 // 🟣 Gate Out History Data with Filters
 async function getGateOutHistoryData(offset = 0, limit = 50, customer = '', search = '') {
-  let whereClause = `
+  const cacheKey = generateCacheKey("gate-out:history", { offset, limit, customer, search });
+  
+  return await withCache(cacheKey, DEFAULT_TTL.HISTORY, async () => {
+    let whereClause = `
     WHERE t.entity_code = 'SR'
       AND t.vrdate >= TO_DATE('01-APR-2025', 'DD-MON-YYYY')
       AND t.outdate IS NOT NULL
@@ -157,11 +164,15 @@ async function getGateOutHistoryData(offset = 0, limit = 50, customer = '', sear
   } finally {
     if (connection) await connection.close();
   }
+  });
 }
 
 
 async function getAllGateOutCustomers() {
-  const query = `
+  const cacheKey = generateCacheKey("gate-out:customers", {});
+  
+  return await withCache(cacheKey, DEFAULT_TTL.CUSTOMERS, async () => {
+    const query = `
     SELECT DISTINCT lhs_utility.get_name('acc_code', acc_code) AS customer_name
     FROM view_gatetran_engine 
     WHERE entity_code = 'SR' 
@@ -185,6 +196,7 @@ async function getAllGateOutCustomers() {
   } finally {
     if (connection) await connection.close();
   }
+  });
 }
 
 module.exports = {

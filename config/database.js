@@ -17,6 +17,7 @@ const resetMainPool = () => {
   }
 };
 
+
 const buildConnectionOptions = (databaseConfig) => {
   if (config.databaseUrl && databaseConfig === config.postgres) {
     return {
@@ -98,6 +99,8 @@ const ensureQcLabSamplesTable = async () => {
     END $$;
   `);
   await mainPool.query('ALTER TABLE qc_lab_samples ADD COLUMN IF NOT EXISTS unique_code VARCHAR(50)');
+  await mainPool.query('ALTER TABLE qc_lab_samples ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()');
+  await mainPool.query('ALTER TABLE qc_lab_samples ALTER COLUMN created_at SET DEFAULT NOW()');
   await mainPool.query('CREATE UNIQUE INDEX IF NOT EXISTS idx_qc_lab_samples_unique_code ON qc_lab_samples (unique_code)');
   logger.info('Ensured qc_lab_samples table and unique code index exist');
 };
@@ -217,9 +220,17 @@ const ensurePipeMillTable = async () => {
   await mainPool.query('CREATE UNIQUE INDEX IF NOT EXISTS idx_pipe_mill_unique_code ON pipe_mill (unique_code)');
   await mainPool.query('ALTER TABLE pipe_mill ALTER COLUMN sample_timestamp SET DEFAULT CURRENT_TIMESTAMP');
   await mainPool.query('ALTER TABLE pipe_mill ADD COLUMN IF NOT EXISTS recoiler_short_code VARCHAR(50)');
+  await mainPool.query('ALTER TABLE pipe_mill ADD COLUMN IF NOT EXISTS mill_number VARCHAR(100)');
+  await mainPool.query('ALTER TABLE pipe_mill ADD COLUMN IF NOT EXISTS quality_supervisor VARCHAR(100)');
+  await mainPool.query('ALTER TABLE pipe_mill ADD COLUMN IF NOT EXISTS mill_incharge VARCHAR(100)');
+  await mainPool.query('ALTER TABLE pipe_mill ADD COLUMN IF NOT EXISTS forman_name VARCHAR(100)');
+  await mainPool.query('ALTER TABLE pipe_mill ADD COLUMN IF NOT EXISTS fitter_name VARCHAR(100)');
+  await mainPool.query('ALTER TABLE pipe_mill ADD COLUMN IF NOT EXISTS shift VARCHAR(20)');
+  await mainPool.query('ALTER TABLE pipe_mill ADD COLUMN IF NOT EXISTS size VARCHAR(50)');
   await mainPool.query('ALTER TABLE pipe_mill ADD COLUMN IF NOT EXISTS section VARCHAR(50)');
   await mainPool.query('ALTER TABLE pipe_mill ADD COLUMN IF NOT EXISTS item_type VARCHAR(50)');
   await mainPool.query('ALTER TABLE pipe_mill ADD COLUMN IF NOT EXISTS thickness VARCHAR(30)');
+  await mainPool.query('ALTER TABLE pipe_mill ADD COLUMN IF NOT EXISTS remarks TEXT');
   await mainPool.query('ALTER TABLE pipe_mill ADD COLUMN IF NOT EXISTS picture TEXT');
   await mainPool.query('ALTER TABLE pipe_mill ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()');
   logger.info('Ensured pipe_mill table and unique code index exist');
@@ -469,22 +480,250 @@ const ensureAuthUsersTable = async () => {
   }
   const ddl = `
     CREATE TABLE IF NOT EXISTS public.users (
-      id SERIAL PRIMARY KEY,
+      id BIGSERIAL PRIMARY KEY,
       user_name VARCHAR(150) UNIQUE,
       username VARCHAR(150),
-      employee_id VARCHAR(150) UNIQUE,
+      employee_id VARCHAR(150),
       password TEXT,
       password_hash TEXT,
       role VARCHAR(50) DEFAULT 'user',
+      status VARCHAR(50) DEFAULT 'active',
       user_status VARCHAR(50) DEFAULT 'active',
       email_id VARCHAR(200),
+      number VARCHAR(20),
+      department VARCHAR(100),
+      given_by VARCHAR(255),
+      user_access TEXT,
+      page_access TEXT,
+      system_access TEXT,
+      remark TEXT,
       created_at TIMESTAMPTZ DEFAULT NOW()
     )
   `;
   await authPool.query(ddl);
+  
+  // Check if id column is BIGINT (not auto-increment) and convert to BIGSERIAL
+  try {
+    const colCheck = await authPool.query(`
+      SELECT 
+        data_type,
+        column_default
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'users'
+        AND column_name = 'id'
+    `);
+    
+    if (colCheck.rows.length > 0) {
+      const colInfo = colCheck.rows[0];
+      // If id is BIGINT without a default (not auto-increment), convert it
+      if (colInfo.data_type === 'bigint' && !colInfo.column_default) {
+        console.log('Converting id column from BIGINT to BIGSERIAL (auto-increment)...');
+        
+        // Create sequence if it doesn't exist
+        await authPool.query(`
+          CREATE SEQUENCE IF NOT EXISTS users_id_seq;
+        `);
+        
+        // Set the sequence to start from max(id) + 1
+        const maxIdResult = await authPool.query(`
+          SELECT COALESCE(MAX(id), 0) as max_id FROM public.users
+        `);
+        const maxId = parseInt(maxIdResult.rows[0].max_id) || 0;
+        
+        await authPool.query(`
+          SELECT setval('users_id_seq', ${maxId + 1}, false);
+        `);
+        
+        // Alter the column to use the sequence as default
+        await authPool.query(`
+          ALTER TABLE public.users 
+          ALTER COLUMN id SET DEFAULT nextval('users_id_seq');
+        `);
+        
+        console.log('✅ Successfully converted id column to auto-increment');
+      } else if (colInfo.data_type === 'bigint' && colInfo.column_default) {
+        // Already has a default, just ensure sequence is set correctly
+        const maxIdResult = await authPool.query(`
+          SELECT COALESCE(MAX(id), 0) as max_id FROM public.users
+        `);
+        const maxId = parseInt(maxIdResult.rows[0].max_id) || 0;
+        
+        await authPool.query(`
+          CREATE SEQUENCE IF NOT EXISTS users_id_seq;
+          SELECT setval('users_id_seq', ${maxId + 1}, false);
+        `);
+      }
+    }
+  } catch (alterErr) {
+    console.warn('Could not alter id column to auto-increment:', alterErr.message);
+  }
+  
+  // Ensure the sequence exists and is properly set up for auto-increment (for new tables)
+  try {
+    const seqCheck = await authPool.query(`
+      SELECT EXISTS (
+        SELECT 1 FROM pg_class WHERE relname = 'users_id_seq'
+      )
+    `);
+    
+    if (!seqCheck.rows[0].exists) {
+      // Create sequence if it doesn't exist
+      await authPool.query(`
+        CREATE SEQUENCE IF NOT EXISTS users_id_seq;
+        ALTER TABLE public.users ALTER COLUMN id SET DEFAULT nextval('users_id_seq');
+        SELECT setval('users_id_seq', COALESCE((SELECT MAX(id) FROM public.users), 1), true);
+      `);
+    } else {
+      // Ensure the sequence is linked to the column and set to correct value
+      const maxIdResult = await authPool.query(`
+        SELECT COALESCE(MAX(id), 0) as max_id FROM public.users
+      `);
+      const maxId = parseInt(maxIdResult.rows[0].max_id) || 0;
+      
+      await authPool.query(`
+        ALTER TABLE public.users ALTER COLUMN id SET DEFAULT nextval('users_id_seq');
+        SELECT setval('users_id_seq', ${maxId + 1}, false);
+      `);
+    }
+  } catch (seqErr) {
+    console.warn('Could not set up users_id_seq sequence:', seqErr.message);
+  }
+  
   await authPool.query('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_user_name ON public.users (user_name)');
-  await authPool.query('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_employee_id ON public.users (employee_id)');
-  logger.info('Ensured auth users table exists');
+  
+  // Drop existing employee_id index if it exists (with CASCADE to handle dependencies)
+  try {
+    await authPool.query('DROP INDEX IF EXISTS public.idx_users_employee_id CASCADE');
+  } catch (err) {
+    // Ignore errors if index doesn't exist
+    console.log('Note: Could not drop idx_users_employee_id (may not exist):', err.message);
+  }
+  
+  // Clean up duplicate non-NULL employee_id values before creating unique index
+  try {
+    await authPool.query(`
+      UPDATE public.users u1
+      SET employee_id = NULL
+      WHERE employee_id IS NOT NULL
+        AND employee_id IN (
+          SELECT employee_id
+          FROM public.users u2
+          WHERE u2.employee_id IS NOT NULL
+            AND u2.id < u1.id
+        )
+    `);
+  } catch (err) {
+    console.warn('Could not clean up duplicate employee_id values:', err.message);
+  }
+  
+  // Create partial unique index for employee_id (only when NOT NULL)
+  try {
+    await authPool.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_users_employee_id
+      ON public.users (employee_id)
+      WHERE employee_id IS NOT NULL
+    `);
+  } catch (err) {
+    // If index creation fails, check if it already exists with correct definition
+    if (err.code === '42P07' || err.code === '23505') {
+      console.log('Index idx_users_employee_id already exists or has duplicates');
+      // Try to drop and recreate
+      try {
+        await authPool.query('DROP INDEX IF EXISTS public.idx_users_employee_id CASCADE');
+        await authPool.query(`
+          CREATE UNIQUE INDEX idx_users_employee_id
+          ON public.users (employee_id)
+          WHERE employee_id IS NOT NULL
+        `);
+      } catch (retryErr) {
+        console.warn('Could not recreate idx_users_employee_id index:', retryErr.message);
+      }
+    } else {
+      console.warn('Could not create idx_users_employee_id index:', err.message);
+    }
+  }
+  
+  // Ensure created_at has DEFAULT NOW() if it exists
+  try {
+    await authPool.query(`
+      ALTER TABLE public.users 
+      ALTER COLUMN created_at SET DEFAULT NOW();
+    `);
+  } catch (err) {
+    // Column might not exist yet, that's okay
+    console.log('Note: Could not set created_at default (may not exist yet):', err.message);
+  }
+  
+  // Add missing columns if they don't exist (for existing tables)
+  const columnsToAdd = [
+    { name: 'status', type: 'VARCHAR(50)', hasDefault: true, defaultValue: 'active' },
+    { name: 'number', type: 'VARCHAR(20)', hasDefault: false },
+    { name: 'department', type: 'VARCHAR(100)', hasDefault: false },
+    { name: 'given_by', type: 'VARCHAR(255)', hasDefault: false },
+    { name: 'user_access', type: 'TEXT', hasDefault: false },
+    { name: 'page_access', type: 'TEXT', hasDefault: false },
+    { name: 'system_access', type: 'TEXT', hasDefault: false },
+    { name: 'remark', type: 'TEXT', hasDefault: false },
+    { name: 'created_at', type: 'TIMESTAMPTZ', hasDefault: true, defaultValue: 'NOW()' },
+  ];
+  
+  for (const column of columnsToAdd) {
+    try {
+      // Check if column exists
+      const checkResult = await authPool.query(`
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_schema = 'public' 
+        AND table_name = 'users' 
+        AND column_name = $1
+      `, [column.name]);
+      
+      if (checkResult.rows.length === 0) {
+        // Column doesn't exist, add it
+        let alterQuery = `ALTER TABLE public.users ADD COLUMN ${column.name} ${column.type}`;
+        if (column.hasDefault && column.defaultValue) {
+          if (column.defaultValue === 'NOW()') {
+            alterQuery += ` DEFAULT NOW()`;
+          } else {
+            alterQuery += ` DEFAULT '${column.defaultValue}'`;
+          }
+        }
+        await authPool.query(alterQuery);
+        logger.info(`Added missing column '${column.name}' to users table`);
+      } else if (column.name === 'created_at') {
+        // Ensure created_at has DEFAULT NOW()
+        try {
+          await authPool.query(`ALTER TABLE public.users ALTER COLUMN created_at SET DEFAULT NOW()`);
+          logger.info(`Ensured 'created_at' column has DEFAULT NOW()`);
+        } catch (alterErr) {
+          logger.warn(`Could not set created_at default:`, alterErr.message);
+        }
+      } else if (column.name === 'given_by') {
+        // Check if given_by column exists but has wrong size, update it to VARCHAR(255)
+        const colInfo = await authPool.query(`
+          SELECT character_maximum_length 
+          FROM information_schema.columns 
+          WHERE table_schema = 'public' 
+            AND table_name = 'users' 
+            AND column_name = 'given_by'
+        `);
+        
+        if (colInfo.rows.length > 0) {
+          const currentSize = colInfo.rows[0].character_maximum_length;
+          if (currentSize && currentSize < 255) {
+            await authPool.query(`ALTER TABLE public.users ALTER COLUMN given_by TYPE VARCHAR(255)`);
+            logger.info(`Updated 'given_by' column size to VARCHAR(255)`);
+          }
+        }
+      }
+    } catch (err) {
+      logger.error(`Could not add column ${column.name} to users table:`, err.message);
+      // Don't throw - continue with other columns
+    }
+  }
+  
+  logger.info('Ensured auth users table exists with all required columns');
 };
 
 const connectDatabase = async () => {
@@ -691,10 +930,10 @@ const getPool = () => {
       logger.warn('⚠️ Database pool created on-demand. Consider calling connectDatabase() during server startup.');
     } else {
       const missing = [];
-      if (!config.postgres.host) missing.push('PG_HOST or DB_HOST');
-      if (!config.postgres.user) missing.push('PG_USER or DB_USER');
-      if (!config.postgres.database) missing.push('PG_DATABASE or DB_NAME');
-      throw new Error(`Database has not been initialized. Missing: ${missing.join(', ')}. Check your .env file (lines 18-31).`);
+      if (!config.postgres.host) missing.push('DB_HOST');
+      if (!config.postgres.user) missing.push('DB_USER');
+      if (!config.postgres.database) missing.push('DB_NAME');
+      throw new Error(`Database has not been initialized. Missing: ${missing.join(', ')}. Check your .env file.`);
     }
   }
   return mainPool;

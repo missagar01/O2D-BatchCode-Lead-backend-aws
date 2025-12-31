@@ -25,6 +25,7 @@
     "multer-s3": "^3.0.1",
     "oracledb": "^6.10.0",
     "pg": "^8.16.3",
+    "redis": "^5.10.0",
     "ssh2": "^1.17.0",
     "zod": "^4.1.13"
   },
@@ -32,9 +33,16 @@
     "nodemon": "^3.1.11"
   },
   "nodemonConfig": {
-    "watch": ["server.cjs", "src", "config"],
+    "watch": [
+      "server.cjs",
+      "src",
+      "config"
+    ],
     "ext": "js,cjs,json",
     "exec": "node server.cjs",
-    "ignore": ["node_modules", "*.log"]
+    "ignore": [
+      "node_modules",
+      "*.log"
+    ]
   }
 }

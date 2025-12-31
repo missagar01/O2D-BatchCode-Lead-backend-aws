@@ -5,6 +5,7 @@ const { initPool, closePool } = require("./src/o2d/config/db.js");
 const { getPgPool, closePgPool, resetPool } = require("./config/pg.js");
 const { connectDatabase, connectAuthDatabase } = require("./config/database.js");
 const { initSSHTunnel, closeSSHTunnel } = require("./config/sshTunnel.js");
+const redisClient = require("./config/redis.js");
 
 dotenv.config({
   path: path.join(__dirname, ".env"),
@@ -47,7 +48,12 @@ async function ensurePostgresConnection() {
 
 async function closeDatabases() {
   try {
-    await Promise.all([closePool(), closePgPool(), closeSSHTunnel()]);
+    await Promise.all([
+      closePool(),
+      closePgPool(),
+      closeSSHTunnel(),
+      redisClient.disconnect()
+    ]);
   } catch (err) {
     console.error("⚠️ Error closing database connections:", err);
   }
@@ -120,6 +126,25 @@ const server = app.listen(port, async () => {
         } catch (authErr) {
           console.warn("⚠️ Auth database connection failed, continuing without it:", authErr.message);
         }
+        
+        // Initialize Redis (optional - for caching)
+        if (process.env.REDIS_URL) {
+          console.log("📡 Initializing Redis connection...");
+          try {
+            await redisClient.connect();
+            if (redisClient.isConnected()) {
+              console.log("✅ Redis connection established");
+            } else {
+              console.warn("⚠️ Redis connection unavailable, application will continue without caching");
+            }
+          } catch (redisErr) {
+            console.warn("⚠️ Redis initialization failed, continuing without it:", redisErr.message);
+            console.warn("⚠️ Caching features will be disabled");
+          }
+        } else {
+          console.log("ℹ️ Redis not configured (REDIS_URL not set), caching disabled");
+        }
+        
         console.log(`🚀 Server running at http://localhost:${port}`);
       } catch (err) {
         console.error("❌ Failed to start server:", err);

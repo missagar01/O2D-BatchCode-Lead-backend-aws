@@ -1,9 +1,13 @@
 const { getConnection } = require("../config/db.js");
 const oracledb = require("oracledb");
+const { generateCacheKey, withCache, DEFAULT_TTL } = require("../utils/cacheHelper.js");
 
 // 🟢 Pending Second Weight with Filters
 async function getPendingSecondWeight(offset = 0, limit = 50, customer = '', search = '') {
-  let whereClause = `
+  const cacheKey = generateCacheKey("second-weight:pending", { offset, limit, customer, search });
+  
+  return await withCache(cacheKey, DEFAULT_TTL.PENDING, async () => {
+    let whereClause = `
     WHERE t.entity_code = 'SR'
       AND t.tcode = 'S'
       AND t.outdate IS NULL
@@ -74,11 +78,15 @@ async function getPendingSecondWeight(offset = 0, limit = 50, customer = '', sea
   } finally {
     if (connection) await connection.close();
   }
+  });
 }
 
 // 🟣 Second Weight History with Filters
 async function getSecondWeightHistory(offset = 0, limit = 50, customer = '', search = '') {
-  let whereClause = `
+  const cacheKey = generateCacheKey("second-weight:history", { offset, limit, customer, search });
+  
+  return await withCache(cacheKey, DEFAULT_TTL.HISTORY, async () => {
+    let whereClause = `
     WHERE t.entity_code = 'SR'
       AND t.tcode = 'S'
       AND t.outdate IS NOT NULL
@@ -150,6 +158,7 @@ async function getSecondWeightHistory(offset = 0, limit = 50, customer = '', sea
   } finally {
     if (connection) await connection.close();
   }
+  });
 }
 
 module.exports = { getPendingSecondWeight, getSecondWeightHistory };
